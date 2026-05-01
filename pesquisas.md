@@ -5,7 +5,7 @@ description: "Pesquisas, estudos e inteligência de mercado aplicados à Cultura
 permalink: /pesquisas/
 ---
 
-<article class="page">
+<article class="page" markdown="1">
 
 # Pesquisas & Inteligência de Mercado
 
