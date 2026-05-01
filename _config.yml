@@ -1,7 +1,8 @@
 title: "Cultura Data-Driven"
 description: "Blog editorial da Gustavo Santos Analytics sobre dados, decisão, gestão, inteligência de mercado e geração de valor."
-url: "https://blog.culturadatadriven.com"
-baseurl: ""
+
+url: "https://gustavoecivil.github.io"
+baseurl: "/blog-cultura-data-driven"
 
 author:
   name: "Gustavo Santos Analytics"
