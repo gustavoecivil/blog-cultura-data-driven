@@ -5,7 +5,7 @@ description: "Sobre o Blog Cultura Data-Driven e a linha editorial da Gustavo Sa
 permalink: /sobre/
 ---
 
-<article class="page">
+<article class="page" markdown="1">
 
 # Sobre este blog
 
