@@ -1,0 +1,23 @@
+title: "Cultura Data-Driven"
+description: "Blog editorial da Gustavo Santos Analytics sobre dados, decisão, gestão, inteligência de mercado e geração de valor."
+url: "https://blog.culturadatadriven.com"
+baseurl: ""
+
+author:
+  name: "Gustavo Santos Analytics"
+  url: "https://www.culturadatadriven.com"
+
+lang: "pt-BR"
+timezone: "America/Sao_Paulo"
+
+permalink: /:categories/:title/
+
+markdown: kramdown
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+
+collections:
+  posts:
+    output: true
