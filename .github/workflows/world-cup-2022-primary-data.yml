@@ -1,0 +1,76 @@
+name: Build World Cup 2022 Primary Data
+
+on:
+  push:
+    branches:
+      - automation/world-cup-2022-primary-data
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-primary-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pandas pyarrow tabulate
+
+      - name: Acquire public primary sources
+        run: |
+          git clone --depth 1 https://github.com/statsbomb/open-data.git /tmp/statsbomb
+          git clone --depth 1 https://github.com/openfootball/worldcup.json.git /tmp/openfootball
+
+      - name: Build, audit and freeze canonical Parquet data
+        run: |
+          python automation/world_cup_2022/build_primary_data.py
+
+      - name: Create distributable archives
+        run: |
+          cd build
+          tar -I 'zstd -10 -T0' -cf world_cup_2022_primary_full.tar.zst world_cup_2022_primary
+          tar -I 'zstd -15 -T0' -cf world_cup_2022_canonical_primary_v1.tar.zst world_cup_2022_primary/CANONICAL_PRIMARY_V1
+          sha256sum *.tar.zst > SHA256SUMS.txt
+          du -sh world_cup_2022_primary *.tar.zst
+
+      - name: Upload complete data package
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-cup-2022-primary-data-full
+          path: |
+            build/world_cup_2022_primary_full.tar.zst
+            build/SHA256SUMS.txt
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload canonical Parquet release
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-cup-2022-canonical-primary-v1
+          path: |
+            build/world_cup_2022_canonical_primary_v1.tar.zst
+            build/SHA256SUMS.txt
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload reports and audit outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-cup-2022-primary-reports
+          path: |
+            build/world_cup_2022_primary/docs/world_cup_2022
+            build/world_cup_2022_primary/data/quality/world_cup_2022
+            build/world_cup_2022_primary/data/catalogs/world_cup_2022/*.csv
+            build/world_cup_2022_primary/logs/world_cup_2022
+          retention-days: 7
