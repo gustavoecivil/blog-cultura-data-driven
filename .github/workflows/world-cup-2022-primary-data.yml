@@ -1,0 +1,22 @@
+name: Build World Cup 2022 Primary Data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-primary-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pandas pyarrow tabulate
+      - name: Download selected Copa 2022 files
+        run: python automation/world_cup_2022/fetch_selected_sources.py
+      - name: Build canonical Parquet release
+        run: python automation/world_cup_2022/build_primary_data.py

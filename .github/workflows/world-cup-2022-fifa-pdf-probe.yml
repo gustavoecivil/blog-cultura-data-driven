@@ -1,0 +1,36 @@
+name: World Cup 2022 External Source Probe
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  probe-external-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y poppler-utils
+          python -m pip install pandas lxml beautifulsoup4 requests
+      - name: Download official FIFA squad list
+        run: |
+          mkdir -p /tmp/fifa
+          curl -L --fail --retry 3 https://fdp.fifa.org/assetspublic/ce44/pdf/SquadLists-English.pdf -o /tmp/fifa/SquadLists-English.pdf
+          pdftotext -layout /tmp/fifa/SquadLists-English.pdf /tmp/fifa/SquadLists-English.txt
+      - name: Download tournament, group and officials pages
+        run: python automation/world_cup_2022/fetch_wikipedia_match_pages.py
+      - name: Upload source probes
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-cup-2022-external-source-probe
+          path: |
+            /tmp/fifa/SquadLists-English.txt
+            /tmp/fifa/SquadLists-English.pdf
+            /tmp/wiki_pages
+          retention-days: 2
