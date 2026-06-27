@@ -24,8 +24,10 @@ jobs:
           curl -L --fail --retry 3 https://fdp.fifa.org/assetspublic/ce44/pdf/SquadLists-English.pdf -o /tmp/fifa/SquadLists-English.pdf
           pdftotext -layout /tmp/fifa/SquadLists-English.pdf /tmp/fifa/SquadLists-English.txt
       - name: Probe Wikipedia external tables
-        run: python automation/world_cup_2022/probe_external_html.py
+        continue-on-error: true
+        run: python automation/world_cup_2022/probe_external_html.py 2>&1 | tee /tmp/external_probe_console.txt
       - name: Upload source probes
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: world-cup-2022-external-source-probe
@@ -33,4 +35,5 @@ jobs:
             /tmp/fifa/SquadLists-English.txt
             /tmp/fifa/SquadLists-English.pdf
             /tmp/external_probe
+            /tmp/external_probe_console.txt
           retention-days: 2
