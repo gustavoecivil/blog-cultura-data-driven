@@ -20,5 +20,13 @@ jobs:
         run: |
           mkdir -p /tmp/fifa
           curl -L --fail --retry 3 https://fdp.fifa.org/assetspublic/ce44/pdf/SquadLists-English.pdf -o /tmp/fifa/SquadLists-English.pdf
-          pdftotext -layout -f 1 -l 1 /tmp/fifa/SquadLists-English.pdf /tmp/fifa/page1.txt
-          sed -n '1,120p' /tmp/fifa/page1.txt
+          pdftotext -layout /tmp/fifa/SquadLists-English.pdf /tmp/fifa/SquadLists-English.txt
+          sed -n '1,120p' /tmp/fifa/SquadLists-English.txt
+      - name: Upload extracted text probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: fifa-squad-pdf-text-probe
+          path: |
+            /tmp/fifa/SquadLists-English.txt
+            /tmp/fifa/SquadLists-English.pdf
+          retention-days: 2
