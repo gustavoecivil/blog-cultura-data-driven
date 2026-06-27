@@ -17,28 +17,35 @@ out = Path("/tmp/external_probe")
 out.mkdir(parents=True, exist_ok=True)
 report = {}
 for name, url in URLS.items():
-    response = requests.get(url, timeout=120, headers={"User-Agent": "Data-Driven-em-Campo-2022/1.0"})
-    response.raise_for_status()
-    html = response.text
-    (out / f"{name}.html").write_text(html, encoding="utf-8")
-    soup = BeautifulSoup(html, "lxml")
-    footballboxes = soup.select("table.footballbox")
-    tables = pd.read_html(StringIO(html))
-    table_summaries = []
-    for i, table in enumerate(tables):
-        table_summaries.append({
-            "index": i,
-            "shape": list(table.shape),
-            "columns": [str(c) for c in table.columns],
-            "head": table.head(2).astype(str).to_dict(orient="records"),
-        })
-    report[name] = {
-        "url": url,
-        "html_bytes": len(response.content),
-        "footballbox_count": len(footballboxes),
-        "first_footballbox_text": footballboxes[0].get_text(" | ", strip=True) if footballboxes else None,
-        "table_count": len(tables),
-        "tables": table_summaries,
-    }
+    item = {"url": url}
+    try:
+        response = requests.get(url, timeout=120, headers={"User-Agent": "Data-Driven-em-Campo-2022/1.0"})
+        item["status_code"] = response.status_code
+        response.raise_for_status()
+        html = response.text
+        (out / f"{name}.html").write_text(html, encoding="utf-8")
+        soup = BeautifulSoup(html, "lxml")
+        footballboxes = soup.select("table.footballbox")
+        item["html_bytes"] = len(response.content)
+        item["footballbox_count"] = len(footballboxes)
+        item["first_footballbox_text"] = footballboxes[0].get_text(" | ", strip=True) if footballboxes else None
+        try:
+            tables = pd.read_html(StringIO(html))
+        except Exception as exc:
+            item["table_parse_error"] = f"{type(exc).__name__}: {exc}"
+            tables = []
+        table_summaries = []
+        for i, table in enumerate(tables):
+            table_summaries.append({
+                "index": i,
+                "shape": list(table.shape),
+                "columns": [str(c) for c in table.columns],
+                "head": table.head(2).astype(str).to_dict(orient="records"),
+            })
+        item["table_count"] = len(tables)
+        item["tables"] = table_summaries
+    except Exception as exc:
+        item["error"] = f"{type(exc).__name__}: {exc}"
+    report[name] = item
 (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-print(json.dumps({k: {"footballbox_count": v["footballbox_count"], "table_count": v["table_count"]} for k, v in report.items()}, indent=2))
+print(json.dumps({k: {"status_code": v.get("status_code"), "footballbox_count": v.get("footballbox_count"), "table_count": v.get("table_count"), "error": v.get("error"), "table_parse_error": v.get("table_parse_error")} for k, v in report.items()}, indent=2))
