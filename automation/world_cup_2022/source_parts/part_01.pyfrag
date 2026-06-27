@@ -1,0 +1,290 @@
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import logging
+import re
+import shutil
+import sys
+import time
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable
+
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+STATSBOMB_BASE = "https://raw.githubusercontent.com/statsbomb/open-data/master"
+OPENFOOTBALL_BASE = "https://raw.githubusercontent.com/openfootball/worldcup.json/master"
+COMPETITION_ID = 43
+SEASON_ID = 106
+PIPELINE_VERSION = "1.0.0"
+SOURCE_STATSBOMB = "statsbomb_open_data"
+SOURCE_OPENFOOTBALL = "openfootball_worldcup_json"
+
+EVENT_FILE_NAMES = {
+    "Pass": "passes",
+    "Shot": "shots",
+    "Carry": "carries",
+    "Ball Receipt*": "ball_receipts",
+    "Pressure": "pressures",
+    "Ball Recovery": "ball_recoveries",
+    "Duel": "duels",
+    "Dribble": "dribbles",
+    "Foul Committed": "fouls_committed",
+    "Foul Won": "fouls_won",
+    "Interception": "interceptions",
+    "Block": "blocks",
+    "Clearance": "clearances",
+    "Dispossessed": "dispossessions",
+    "Miscontrol": "miscontrols",
+    "Offside": "offsides",
+    "50/50": "fifty_fifty",
+    "Goal Keeper": "goalkeeper_actions",
+    "Substitution": "substitutions",
+    "Injury Stoppage": "injuries",
+    "Bad Behaviour": "bad_behaviour",
+    "Starting XI": "starting_elevens",
+    "Tactical Shift": "tactical_shifts",
+    "Half Start": "half_starts",
+    "Half End": "half_ends",
+    "Referee Ball-Drop": "referee_ball_drops",
+    "Player On": "players_on",
+    "Player Off": "players_off",
+    "Shield": "shields",
+    "Error": "errors",
+    "Dribbled Past": "dribbled_past",
+    "Own Goal Against": "own_goals_against",
+    "Own Goal For": "own_goals_for",
+}
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def snake(value: str) -> str:
+    value = value.replace("*", "")
+    value = re.sub(r"[^0-9A-Za-z]+", "_", value).strip("_")
+    value = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", value)
+    return value.lower()
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def json_dumps(value: Any) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def safe_read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def make_session() -> requests.Session:
+    session = requests.Session()
+    retry = Retry(
+        total=5,
+        connect=5,
+        read=5,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET",),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=16, pool_maxsize=16)
+    session.mount("https://", adapter)
+    session.headers.update({"User-Agent": "Data-Driven-em-Campo-World-Cup-2022/1.0"})
+    return session
+
+
+@dataclass
+class DownloadResult:
+    source_id: str
+    source_name: str
+    source_url: str
+    source_type: str
+    license: str
+    collected_at_utc: str
+    local_path: str
+    file_name: str
+    file_size_bytes: int
+    sha256: str
+    http_status: int
+    content_type: str | None
+    record_count: int | None
+    coverage_notes: str
+    collection_status: str
+    error_message: str | None
+
+
+def count_records(path: Path) -> int | None:
+    try:
+        payload = safe_read_json(path)
+        if isinstance(payload, list):
+            return len(payload)
+        if isinstance(payload, dict):
+            if isinstance(payload.get("matches"), list):
+                return len(payload["matches"])
+            return len(payload)
+    except Exception:
+        return None
+    return None
+
+
+def download_file(
+    url: str,
+    destination: Path,
+    source_id: str,
+    source_name: str,
+    source_type: str,
+    license_text: str,
+    coverage_notes: str,
+    allow_404: bool = False,
+) -> DownloadResult:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    session = make_session()
+    collected = utc_now()
+    try:
+        response = session.get(url, timeout=120)
+        if response.status_code == 404 and allow_404:
+            return DownloadResult(
+                source_id, source_name, url, source_type, license_text, collected,
+                str(destination), destination.name, 0, "", 404,
+                response.headers.get("content-type"), None, coverage_notes,
+                "not_available", None,
+            )
+        response.raise_for_status()
+        temporary = destination.with_suffix(destination.suffix + ".part")
+        temporary.write_bytes(response.content)
+        temporary.replace(destination)
+        return DownloadResult(
+            source_id, source_name, url, source_type, license_text, collected,
+            str(destination), destination.name, destination.stat().st_size,
+            sha256_file(destination), response.status_code,
+            response.headers.get("content-type"), count_records(destination),
+            coverage_notes, "collected", None,
+        )
+    except Exception as exc:
+        return DownloadResult(
+            source_id, source_name, url, source_type, license_text, collected,
+            str(destination), destination.name, 0, "", 0, None, None,
+            coverage_notes, "failed", f"{type(exc).__name__}: {exc}",
+        )
+    finally:
+        session.close()
+
+
+def write_parquet(df: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    pq.write_table(table, path, compression="zstd", use_dictionary=True)
+
+
+def flatten_dict(payload: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in payload.items():
+        name = snake(f"{prefix}_{key}" if prefix else key)
+        if isinstance(value, dict):
+            result.update(flatten_dict(value, name))
+        elif isinstance(value, list):
+            result[name] = json_dumps(value)
+        else:
+            result[name] = value
+    return result
+
+
+def value_kind(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, str):
+        return "str"
+    return "json"
+
+
+def resolve_arrow_type(kinds: set[str]) -> pa.DataType:
+    non_null = kinds - {"null"}
+    if not non_null:
+        return pa.string()
+    if non_null == {"bool"}:
+        return pa.bool_()
+    if non_null <= {"int"}:
+        return pa.int64()
+    if non_null <= {"int", "float"}:
+        return pa.float64()
+    return pa.string()
+
+
+def normalize_for_type(value: Any, dtype: pa.DataType) -> Any:
+    if value is None:
+        return None
+    if pa.types.is_string(dtype):
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (dict, list)):
+            return json_dumps(value)
+        return str(value)
+    if pa.types.is_boolean(dtype):
+        return bool(value)
+    if pa.types.is_integer(dtype):
+        try:
+            return int(value)
+        except Exception:
+            return None
+    if pa.types.is_floating(dtype):
+        try:
+            return float(value)
+        except Exception:
+            return None
+    return value
+
+
+def ensure_dirs(root: Path) -> dict[str, Path]:
+    paths = {
+        "raw": root / "data" / "raw" / "world_cup_2022",
+        "canonical": root / "data" / "processed" / "world_cup_2022" / "canonical",
+        "catalogs": root / "data" / "catalogs" / "world_cup_2022",
+        "quality": root / "data" / "quality" / "world_cup_2022",
+        "docs": root / "docs" / "world_cup_2022",
+        "logs": root / "logs" / "world_cup_2022",
+        "schemas": root / "schemas" / "world_cup_2022",
+        "snapshot": root / "snapshot",
+    }
+    for path in paths.values():
+        path.mkdir(parents=True, exist_ok=True)
+    for sub in ("core", "events", "tactics", "officials", "source_context", "three_sixty"):
+        (paths["canonical"] / sub).mkdir(parents=True, exist_ok=True)
+    return paths
+
+
+def audit_workspace(root: Path, docs: Path) -> None:
+    rows: list[dict[str, Any]] = []
+    for path in sorted(Path.cwd().rglob("*")):
+        if any(part in {".git", "build", "__pycache__"} for part in path.parts):
+            continue
