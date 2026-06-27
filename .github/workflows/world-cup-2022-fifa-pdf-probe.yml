@@ -1,0 +1,24 @@
+name: World Cup 2022 FIFA PDF Probe
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  probe-fifa-squad-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install poppler
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Download official FIFA squad list
+        run: |
+          mkdir -p /tmp/fifa
+          curl -L --fail --retry 3 https://fdp.fifa.org/assetspublic/ce44/pdf/SquadLists-English.pdf -o /tmp/fifa/SquadLists-English.pdf
+          pdftotext -layout -f 1 -l 1 /tmp/fifa/SquadLists-English.pdf /tmp/fifa/page1.txt
+          sed -n '1,120p' /tmp/fifa/page1.txt
