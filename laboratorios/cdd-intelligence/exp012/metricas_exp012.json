@@ -1,0 +1,69 @@
+{
+  "experimento": "EXP-012",
+  "data": "2026-11-11",
+  "prova_nova": "FNDE 2024 Engenharia Civil",
+  "gabaritos_indexados": 70,
+  "fnde_gabaritos": {
+    "C": 37,
+    "E": 31,
+    "X": 2
+  },
+  "fnde_recursos": 4,
+  "total_casos_recursos": 15,
+  "casos_justificativa_especifica": 11,
+  "casos_justificativa_generica": 4,
+  "taxas_descritivas": [
+    {
+      "orgao": "Câmara dos Deputados",
+      "ano": 2012,
+      "recursos": 7,
+      "itens": 80,
+      "taxa": 0.0875,
+      "ic_wilson": [
+        0.04303200178205986,
+        0.16976795508475
+      ]
+    },
+    {
+      "orgao": "TRT-10",
+      "ano": 2025,
+      "recursos": 4,
+      "itens": 70,
+      "taxa": 0.05714285714285714,
+      "ic_wilson": [
+        0.02244377910071125,
+        0.13791950474838233
+      ]
+    },
+    {
+      "orgao": "FNDE",
+      "ano": 2024,
+      "recursos": 4,
+      "itens": 70,
+      "taxa": 0.05714285714285714,
+      "ic_wilson": [
+        0.02244377910071125,
+        0.13791950474838233
+      ]
+    }
+  ],
+  "humanos_independentes": 0,
+  "execucoes_jev": 0,
+  "execucoes_laya": 0,
+  "llm_externa": 0,
+  "validacao_preditiva_realizada": false,
+  "fonte_pdf_binario_baixado": false,
+  "qa": {
+    "fnde_70": 70,
+    "fnde_recursos_4": 4,
+    "recursos_15": 15,
+    "exp011_preservado": true,
+    "integridade_fk": [],
+    "integridade_db": "ok",
+    "texto_integrais_fnDE": 0,
+    "revisao_independente_fnDE": 0,
+    "unicos_FNDE": 70,
+    "alteracoes_FNDE": 4,
+    "zero_chamadas_jev_exp006": true
+  }
+}
